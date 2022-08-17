@@ -1,0 +1,988 @@
+--[[ BEGIN DIGITAL SIGNATURE
+Pi6RULQQINwP3btuEAfWERdy0CceARNuEDy2LcfR5n5opHA55s33NKnB+Wju2apYZEdm0uKzxtthzLpti1UjLc0ff5Vq18YviIO9PyHnSy0EVdqYkxtkL2q3gIl42ZExCnPMklQNds7oytY4SzhOb5MAJ4ALbZVS+MkyuzcCkjAulcq2txXXDPSjqcYW9JA+6UsX9jFwbroL6n9bge/zVRvZo7fmoQQlFYxQtuWLl0vB4bHB5K5pnByozaw3HiHorZAeMY3lfRgcXWxzet4V4yvKszBI1IuYjuKZEFCFWMTimkbAUEr0j7yXattdRqtS9uGsm1crBwEyui5ga08YGw==
+END DIGITAL SIGNATURE ]]
+-- Wyrestorm
+-- by QSC
+-- July 2020
+
+PluginInfo = {
+    Name = "Enterprise Manager~Wyrestorm~Wyrestorm v2.2",
+    Version = "2.2",
+    BuildVersion = "2.2.0.0",
+    Id = "6f53c819-55dd-4b99-9a4e-e03b64988c8a",
+    Author = "QSC",
+    Description = "Control plugin for Wyrestorm",
+    IsManaged = true,
+    Model = "NHD Series",
+    Type = Reflect and Reflect.Types.VideoDistribution or 0
+}
+
+function GetColor(props)
+  return { 102, 102, 102 }
+end
+
+function GetPrettyName(props)
+  return "Wyrestorm\rv"..PluginInfo.Version
+end
+
+function GetPages(props) --optional function if plugin has multiple pages
+  pages = {}
+  local function BuildPageNames()
+    pagenames={"Setup","Tx 1-32"}
+    if props["Tx Count"].Value > 32 then table.insert(pagenames,"Tx 33-64") end
+    if props["Tx Count"].Value > 64 then table.insert(pagenames,"Tx 65-96") end
+    if props["Tx Count"].Value > 96 then table.insert(pagenames,"Tx 97-128") end
+    table.insert(pagenames,"Rx 1-32")
+    if props["Rx Count"].Value > 32 then table.insert(pagenames,"Rx 33-64") end
+    if props["Rx Count"].Value > 64 then table.insert(pagenames,"Rx 65-96") end
+    if props["Rx Count"].Value > 96 then table.insert(pagenames,"Rx 97-128") end
+    return pagenames
+  end
+  
+  for ix,name in ipairs(BuildPageNames()) do
+    table.insert(pages, {name = pagenames[ix]})
+  end
+  return pages
+end
+
+function GetProperties()
+  props={
+    {Name="Debug Print",Type="enum",Choices={"None","Tx/Rx","Tx","Rx","Function Calls","All"},Value="None"},
+    {Name="Tx Count",Type="integer",Min=1,Max=128,Value=1},
+    {Name="Rx Count",Type="integer",Min=1,Max=128,Value=1}
+  }
+  return props
+end
+
+function RectifyProperties(props)
+  if props.plugin_show_debug.Value==false then props["Debug Print"].IsHidden=true end
+  return props
+end
+
+function GetControls(props)
+  ctrls = {}
+  local RxCount=props["Rx Count"].Value
+  local TxCount=props["Tx Count"].Value
+  
+  ctrls={
+    {Name="Status",ControlType="Indicator",IndicatorType=Reflect and "StatusGP" or "Status",Count=1,UserPin=true,PinStyle="Output"},
+    {Name="IPAddress",ControlType="Text",Count=1,UserPin=true,PinStyle="Both"},
+    {Name="Port",ControlType="Knob",ControlUnit="Integer",Min=1,Max=65535,Count=1,UserPin=true,PinStyle="Both"},
+    {Name="Password",ControlType="Text",Count=1,UserPin=true,PinStyle="Both"},
+    {Name="APIVersion",ControlType="Text",Count=1,UserPin=true,PinStyle="Output"},
+    {Name="SysVersion",ControlType="Text",Count=1,UserPin=true,PinStyle="Output"},
+    {Name="RefreshDevs",ControlType="Button",ButtonType="Trigger",Count=1,UserPin=true,PinStyle="Both"},
+    {Name="TxName",ControlType="Text",TextBoxType="ComboBox",Count=TxCount,UserPin=true,PinStyle="Output"},
+    {Name="TxReboot",ControlType="Button",ButtonType="Trigger",Count=TxCount,UserPin=true,PinStyle="Both"},
+    {Name="TxHDCP",ControlType="Indicator",IndicatorType="LED",PinStyle="Output",UserPin=true,Count=TxCount},
+    {Name="TxOnline",ControlType="Indicator",IndicatorType="LED",PinStyle="Output",UserPin=true,Count=TxCount},
+    {Name="RxName",ControlType="Text",TextBoxType="ComboBox",Count=RxCount,UserPin=true,PinStyle="Output"},
+    {Name="Source",ControlType="Text",TextBoxType="ComboBox",Count=RxCount,UserPin=true,PinStyle="Both"},
+    {Name="RxReboot",ControlType="Button",ButtonType="Trigger",Count=RxCount,UserPin=true,PinStyle="Both"},
+    {Name="RxOnline",ControlType="Indicator",IndicatorType="LED",PinStyle="Output",UserPin=true,Count=RxCount}
+  }
+  return ctrls
+end
+
+function GetControlLayout(props)
+  layout   = {}
+  graphics = {}
+  -- Position Function
+  local function GetIPos(qty, rowlen, base, ofs)
+    local row,col = (qty-1)//(rowlen),(qty-1)%rowlen
+    return { base.x + col*ofs.x, base.y + row*ofs.y }
+  end
+  
+  -- Page Names Function
+  local function BuildPageNames()
+    pagenames={"Setup","Tx 1-32"}
+    if props["Tx Count"].Value > 32 then table.insert(pagenames,"Tx 33-64") end
+    if props["Tx Count"].Value > 64 then table.insert(pagenames,"Tx 65-96") end
+    if props["Tx Count"].Value > 96 then table.insert(pagenames,"Tx 97-128") end
+    table.insert(pagenames,"Rx 1-32")
+    if props["Rx Count"].Value > 32 then table.insert(pagenames,"Rx 33-64") end
+    if props["Rx Count"].Value > 64 then table.insert(pagenames,"Rx 65-96") end
+    if props["Rx Count"].Value > 96 then table.insert(pagenames,"Rx 97-128") end
+    return pagenames
+  end
+  
+  -- Color Lookup Table
+  local White={255,255,255}
+  local Black={0,0,0}
+  local BGGray={222,222,222}
+  local WyrestormLogo= "PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA5MjkuNDMgMTg2Ljc0Ij48ZyBpZD0iTGF5ZXJfMiIgZGF0YS1uYW1lPSJMYXllciAyIj48ZyBpZD0iTGF5ZXJfMS0yIiBkYXRhLW5hbWU9IkxheWVyIDEiPjxnIGlkPSJMb2dvIj48cGF0aCBkPSJNMTcwLjQyLjIzYTksOSwwLDAsMS0uMTYsMS44OHEtNC44NCwxNi4yOC05Ljc3LDMyLjU0UTE0My43NSw4OS43OCwxMjcsMTQ0Ljg4Yy0uNjEsMi0uNjEsMi0yLjcyLDJsLTQ3Ljg3LDBINzQuNzJjMi4xNi0zNS40OSwzLjIxLTcwLjk1LDcuNTUtMTA2LjE5bC0uNDMtLjA5QTEzLDEzLDAsMCwwLDgxLjM1LDQyYy00LjI0LDE1LjkxLTguMjcsMzEuODktMTIuNzcsNDcuNzQtNS4yOCwxOC42NS0xMSwzNy4xOC0xNi40Niw1NS43Ny0uMzcsMS4yNi0xLDEuNTYtMi4xOSwxLjU1LTUuNC0uMDctMTAuNzksMC0xNi4xOSwwcS0xNi4wOCwwLTMyLjE2LDBBOC4wOCw4LjA4LDAsMCwxLDAsMTQ2LjY0di00LjU2YTguODYsOC44NiwwLDAsMCwuMjMtMS4yM1EuODgsMTI4LDEuNTIsMTE1LjA5cS43OS0xNS42MywxLjU5LTMxLjI2UTMuODksNjguNDMsNC42Niw1M3EuNzgtMTUuNzUsMS41OC0zMS41MWMuMzQtNi43NS42NS0xMy41LDEtMjAuMjUsMC0uMzcuNDEtLjcyLjYzLTEuMDhsMzIuMjYsMGMxLjE5LDAsMi4zOSwwLDMuNTksMGE0LjQ2LDQuNDYsMCwwLDEsLjU0LDEuNnEtMS4xOSwxNS40OC0yLjQ4LDMxYy0xLjI1LDE0LjY5LTIuNDgsMjkuMzktMy45LDQ0LjA2LS44LDguMjctMiwxNi41LTMsMjQuNzUtLjM3LDMtLjY5LDYtMSw5LjA4YTMuNjksMy42OSwwLDAsMCwuODYtMS42OVEzNy4xOCw5OC44MiwzOS42LDg4LjdjMS43NS03LjMsMy4xNy0xNC42OCw1LjI5LTIxLjg2LDQuNDgtMTUuMjMsOS4zMi0zMC4zNCwxNC00NS41cTMuMDktMTAsNi4yLTIwYy4xNy0uNTQuMi0xLjI2LDEuMDgtMS4xNWEzLjkxLDMuOTEsMCwwLDAsLjQ4LDBIOTcuNjFsMTUsMGMuMi40OS42LDEsLjU3LDEuNDZxLS42NiwxMi4zNS0xLjQxLDI0LjY3LS45MiwxNS40NC0xLjg0LDMwLjg4Yy0uMjgsNC43NS0uMzUsOS41Mi0uODMsMTQuMjQtMS4yNiwxMi42LTIuNywyNS4xOS00LjA2LDM3Ljc4YTguNzksOC43OSwwLDAsMCwuMDYsMS4yNSw2LjY0LDYuNjQsMCwwLDAsLjc2LTJDMTA4LjUzLDk2Ljc3LDExMSw4NSwxMTQsNzMuMzdjMy4zNy0xMy40Niw3LjA5LTI2LjgzLDEwLjcyLTQwLjIyLDIuODctMTAuNjMsNS44Mi0yMS4yMyw4Ljc3LTMxLjg0YTQuNDgsNC40OCwwLDAsMSwuNjktMS4xWiIgc3R5bGU9ImZpbGw6IzE2N2QzZjtmaWxsLXJ1bGU6ZXZlbm9kZCIvPjxwYXRoIGQ9Ik01MTMuODQsMGMuNzYuNzMsMS41OCwxLjQxLDIuMjcsMi4yMSw0LjM2LDUuMDUsOC42OCwxMC4xNSwxMywxNS4yYTIuNzksMi43OSwwLDAsMSwuNzMsMi41MlE1MjgsMzAuNzIsNTI2LjA4LDQxLjUxYy0uMDkuNDctLjIxLjkzLS4zMiwxLjQ1bC0zOS41LDUuODljMS01Ljg2LDItMTEuNTUsMy0xNy4zOC0uNzUtLjA4LTEuMjktLjItMS44My0uMi0zLjUyLDAtNywwLTEwLjU2LDAtMS4yMSwwLTEuNzUuNDEtMS45NCwxLjY4cS0uODMsNS41MS0xLjkzLDExYTEuODIsMS44MiwwLDAsMCwxLDIuMjVjNC4xMywyLjUxLDguMjIsNS4wNywxMi4zMyw3LjYybDMyLjA2LDE5LjkxYzEuNzgsMS4xLDEuNzksMS4xMSwxLjQ1LDMuMDZxLTQuMzIsMjQuMzYtOC42MSw0OC43MmE1LjkxLDUuOTEsMCwwLDEtMi4xLDMuNjNxLTkuNjYsOC4xOS0xOS4yMywxNi40NmE1LjcxLDUuNzEsMCwwLDEtNCwxLjVxLTI0LjQ4LS4wNy00OSwwYTIuMjgsMi4yOCwwLDAsMS0yLTFxLTcuMjMtOS0xNC41My0xOGEyLjM1LDIuMzUsMCwwLDEtLjU2LTIuMDZjMS4zMi03LjMyLDIuNi0xNC42MywzLjkxLTIxLjk0LjM0LTEuODkuNzYtMy43NiwxLjA2LTUuNjVBMS4yMSwxLjIxLDAsMCwxLDQyNiw5Ny4xNGM0Ljk0LS43Miw5Ljg4LTEuNDksMTQuODEtMi4yM3ExMS0xLjY1LDIxLjkzLTMuMjZjMS40Ni0uMjEsMS41OCwwLDEuMzIsMS40Ni0xLjI0LDcuMTItMi40NywxNC4yNC0zLjczLDIxLjUyYTkuMjEsOS4yMSwwLDAsMCwxLjUyLjI3YzMuNzYsMCw3LjUyLDAsMTEuMjgsMGExLjQxLDEuNDEsMCwwLDAsMS42Ny0xLjM2cTEuMzctOCwyLjgzLTE1LjkyYTIsMiwwLDAsMC0xLjE0LTIuMzlxLTIyLjUtMTMuODMtNDUtMjcuNzNhMS45MiwxLjkyLDAsMCwxLTEtMi4zNGMyLjYzLTE0LjYyLDUuMTgtMjkuMjUsNy44Mi00My44N2E1LjE2LDUuMTYsMCwwLDEsMS41LTIuNzRjNi41Mi01Ljc5LDEzLjEtMTEuNTEsMTkuNjgtMTcuMjNhMTguMTQsMTguMTQsMCwwLDEsMi0xLjM1WiIgc3R5bGU9ImZpbGw6IzE2N2QzZjtmaWxsLXJ1bGU6ZXZlbm9kZCIvPjxwYXRoIGQ9Ik04NDUuMiwxNDYuODhIODA4LjU4Yy4zNi0yLjE2LjY4LTQuMjMsMS02LjI5cTQuNzUtMjYuODQsOS41Mi01My42NiwxLjYxLTkuMDksMy4yMy0xOC4xN2MuNDYtMi41Mi40Ny0yLjUyLTItMi41Mi0zLjQ4LDAtNywuMDUtMTAuNDQsMC0xLjEsMC0xLjQ3LjM4LTEuNjMsMS4zNi0uOTQsNS40My0xLjkxLDEwLjg1LTIuODYsMTYuMjhxLTMuMDYsMTcuNDYtNi4xMSwzNC45My0yLjM0LDEzLjMzLTQuNjcsMjYuNjZjLS4wOC40Ny0uMi45Mi0uMzIsMS40NUg3NTcuODljLjI3LTEuNjQuNTEtMy4yLjc5LTQuNzVxNC0yMi42OSw4LjA3LTQ1LjQsNS0yOC4wOCwxMC01Ni4xNGMuNTctMy4xNy0uMi0yLjgyLDMuMjgtMi44NSwxMC42NC0uMDgsMjEuMjgtLjA2LDMxLjkyLS4wNi41NCwwLDEuMDguMDksMS43Ny4xNC0uNDEsMi40OC0uNzksNC44Mi0xLjIzLDcuNTNhMTMuMjMsMTMuMjMsMCwwLDAsMS4zMi0uNzljMi40Mi0xLjkxLDQuODQtMy44MSw3LjIyLTUuNzZhNC43NCw0Ljc0LDAsMCwxLDMuMTgtMS4xNXExNS4zNiwwLDMwLjcyLDBBMy41OSwzLjU5LDAsMCwxLDg1Ny44LDM5YzEuODMsMi4xMSwzLjcyLDQuMTgsNS42NSw2LjMzLjU3LS4zOSwxLjA3LS42OSwxLjUzLTEuMDYsMi4zMy0xLjgzLDQuNTktMy43NCw3LTUuNDdhNS40NCw1LjQ0LDAsMCwxLDIuOTQtMS4wN2M4LjY0LS4wOCwxNy4yOCwwLDI1LjkyLS4wNWEyLjQ3LDIuNDcsMCwwLDEsMi4yLDEuMWMzLjE1LDQuMTMsNi4zOCw4LjIsOS41LDEyLjM1YTMuMTQsMy4xNCwwLDAsMSwuNTQsMi4xOHEtNC4wOCwyMy41NS04LjI4LDQ3LjA3LTQsMjIuNTMtNy45Myw0NS4wN2MtLjIxLDEuMi0uNywxLjUyLTEuODYsMS41Mi0xMS4wOCwwLTIyLjE2LDAtMzMuMjQsMC0xLjkyLDAtMS45NCwwLTEuNi0ybDcuNjItNDIuOTNxMy0xNy4xMSw2LTM0LjIyYy4yNi0xLjQ2LjEyLTEuNjEtMS4zMy0xLjYxLTMuOCwwLTcuNiwwLTExLjQsMC0xLDAtMS41Mi4yLTEuNzMsMS4zOHEtMy42MiwyMC44NC03LjM2LDQxLjY0LTMuMjYsMTguMjktNi41MiwzNi41NkM4NDUuNDEsMTQ2LjExLDg0NS4zMSwxNDYuNDIsODQ1LjIsMTQ2Ljg4WiIgc3R5bGU9ImZpbGw6IzE2N2QzZjtmaWxsLXJ1bGU6ZXZlbm9kZCIvPjxwYXRoIGQ9Ik0yMDQuNCwzNy44NWMtNC42OCwyNi42NC05LjMzLDUzLjA5LTE0LDc5LjdhMTUuNzcsMTUuNzcsMCwwLDAsMS44NS4yM2MzLjYsMCw3LjIsMCwxMC44LDBhMS42MSwxLjYxLDAsMCwwLDEuOTItMS41N1EyMTEuMiw4MSwyMTcuNDksNDUuNzRjLjM4LTIuMTMuODMtNC4yNCwxLjEzLTYuMzcuMTgtMS4yNi42OC0xLjcxLDItMS43MSw3LjU2LjA1LDE1LjEyLDAsMjIuNjgsMCwzLjUyLDAsNywuMTEsMTAuNTUuMTguMzEsMCwuNjIuMDYsMS4xNi4xMi0uMzEsMS45LS41OCwzLjc0LS45LDUuNTdxLTQuMzEsMjQuNDItOC42Miw0OC44M2wtMTAsNTYuNXEtMS44NywxMC42OC0zLjcxLDIxLjM2YTQuOTQsNC45NCwwLDAsMS0xLjc5LDMuMTNjLTUsNC4xMy05LjkzLDguMzMtMTQuOTQsMTIuNDJhNC4yNSw0LjI1LDAsMCwxLTIuNDguOTJjLTE4LjA4LDAtMzYuMTUsMC01NC4yMy4wNmEyLjQ4LDIuNDgsMCwwLDEtMi4yNi0xLjE1cS00LjU4LTYuMDktOS4yNi0xMi4wOWEzLjA3LDMuMDcsMCwwLDEtLjcxLTIuNzJjLjg2LTQuNTksMS42NS05LjE5LDIuNDctMTMuNzkuMDYtLjMxLjE5LS42LjMxLTEsMTEuMTUtLjMyLDIyLjI5LS4zNSwzMy42MSwwLS4zMywyLjA4LS41NywzLjkzLS45NSw1Ljc2LS4yMSwxLC4xNSwxLjI1LDEuMDgsMS4yNCw0LjIsMCw4LjQtLjA3LDEyLjYsMCwxLjI3LDAsMS41NS0uNTcsMS43My0xLjU0LjU1LTMuMTksMS4xMi02LjM3LDEuNjgtOS41NmwxLjgzLTEwLjYyYy4wNy0uNDIuMDgtLjg2LjE1LTEuNTktLjcyLjUtMS4yNS44Mi0xLjcyLDEuMjEtMi4xNiwxLjc4LTQuMjgsMy42MS02LjQ2LDUuMzdhMi44MiwyLjgyLDAsMCwxLTEuNTguNjFxLTEzLjYyLDAtMjcuMjQsMGEyLjE3LDIuMTcsMCwwLDEtMS40Ny0uNzNjLTMuNDUtNC4zLTYuODQtOC42NS0xMC4yNy0xM2EzLjg4LDMuODgsMCwwLDEtLjYyLTMuMjlxNS42NC0zMS42NiwxMS4yNy02My4zM2w0LjgtMjcuMTNjLjMtMS42Ny4zOS0xLjczLDIuMS0xLjczaDMzLjExQzIwMy4xMiwzNy43LDIwMy43LDM3Ljc5LDIwNC40LDM3Ljg1WiIgc3R5bGU9ImZpbGw6IzE2N2QzZjtmaWxsLXJ1bGU6ZXZlbm9kZCIvPjxwYXRoIGQ9Ik0zNzguODQsMzcuNjljOS43NiwwLDE5LjUyLDAsMjkuMjgsMGEyLjEsMi4xLDAsMCwxLDEuODkuOTFxNSw2LjM1LDEwLjE0LDEyLjYzYTIuMTcsMi4xNywwLDAsMSwuNDgsMlE0MTcuMjksNzEuOTIsNDE0LDkwLjY4Yy0uMzIsMS44NC0uNjEsMy43LTEsNS41M2ExLjQ0LDEuNDQsMCwwLDEtLjkyLjk0Yy03LjkyLDEuMDktMTUuODQsMi4xMi0yMy43NiwzLjE3bC0yNC43MSwzLjI1Yy0xLjM5LjE5LTIuNzcuNDEtNC4xNi41NGExLjMyLDEuMzIsMCwwLDAtMS4zMywxLjI2Yy0uNjcsMy44Ni0xLjMxLDcuNzItMiwxMS41Ni0uMiwxLjA2LjEyLDEuMzksMS4xMiwxLjM4LDMuMjQsMCw2LjQ4LDAsOS43MiwwLDEuMTIsMCwyLjI0LS4xMiwzLjM1LS4wOGExLjMzLDEuMzMsMCwwLDAsMS41Ny0xLjMxYy4yOS0xLjg2LjY5LTMuNjksMS01LjU0LjExLS42OS4zOC0xLDEuMTUtMXExNy4yMi4wNiwzNC40MywwYy45MiwwLDEuMDkuNDUuOTUsMS4yMi0xLjIsNi42LTIuMzcsMTMuMi0zLjY1LDE5Ljc5YTQuNDEsNC40MSwwLDAsMS0xLjM5LDIuMjdjLTQuNzMsNC4xMi05LjUzLDguMTctMTQuMjksMTIuMjdhNCw0LDAsMCwxLTIuODIsMWMtMTcuOTUsMC0zNS45MS0uMDUtNTMuODcsMGE2LjM3LDYuMzcsMCwwLDEtNS42My0yLjU1Yy0yLjk1LTMuNzMtNi4xMi03LjI5LTkuMjctMTAuODVhMy42NCwzLjY0LDAsMCwxLS45MS0zLjNjMS4xNy02LjUyLDIuMzEtMTMuMDUsMy40Ni0xOS41OHEzLjE5LTE4LjEsNi4zOC0zNi4yMWMxLjIyLTYuOTIsMi4zNy0xMy44NiwzLjY3LTIwLjc2QTUuNDMsNS40MywwLDAsMSwzMzIuNjksNTFxNy4yLTYuMzQsMTQuNTgtMTIuNDlhMy45MywzLjkzLDAsMCwxLDIuMjktLjc2YzkuNzYsMCwxOS41MiwwLDI5LjI4LDBabTIuNzQsMjcuMTVhMTUuMzIsMTUuMzIsMCwwLDAtMS43NS0uMjFjLTQuMjcsMC04LjU1LDAtMTIuODMsMEExLjQ3LDEuNDcsMCwwLDAsMzY1LjI2LDY2Yy0uOCw0LjUyLTEuNzIsOS0yLjU2LDEzLjUyLS4yNywxLjQzLS40MywyLjg4LS42Niw0LjQ0LjUxLDAsLjc3LS4wNiwxLS4xbDEzLjE4LTEuNzZjMi4zOS0uMzIsMi40Mi0uMzEsMi44Mi0yLjU4QzM3OS45Myw3NC42NywzODAuNzQsNjkuOCwzODEuNTgsNjQuODRaIiBzdHlsZT0iZmlsbDojMTY3ZDNmO2ZpbGwtcnVsZTpldmVub2RkIi8+PHBhdGggZD0iTTU0Ny44OSwxMi42NWgzNi4xNmMtLjA2LjcyLS4wNywxLjMtLjE2LDEuODdRNTgyLjA3LDI1LjI2LDU4MC4yMywzNmMtLjIzLDEuMzUtLjE2LDEuNDQsMS4yMiwxLjQ0aDE1LjA4Yy0uMTMsMS4xNi0uMiwyLjE3LS4zOCwzLjE3LTEuNDEsOC0yLjg3LDE2LTQuMjQsMjMuOTQtLjIsMS4xOS0uNjgsMS41NS0xLjg0LDEuNTQtNC41NiwwLTkuMTIuMDctMTMuNjgsMC0xLjI4LDAtMS42NC41NS0xLjgzLDEuNjJxLTEuNDEsOC4wOS0yLjg4LDE2LjE1LTIuODIsMTUuNjctNS42NiwzMS4zNWMwLC4yLS4wOC40LS4xLjU5LS4xOCwxLjQtLjA3LDEuNTQsMS4zMSwxLjU1LDQuNTYsMCw5LjEyLDAsMTMuNjguMDYuNDcsMCwuOTQuMDYsMS41NC4xYTEyLjcsMTIuNywwLDAsMS0uMTEsMS4zNmMtMS41Niw4Ljc3LTMuMTYsMTcuNTItNC42OCwyNi4zLS4yMSwxLjE5LS43MiwxLjYxLTEuODMsMS41OS0xLjM2LDAtMi43MiwwLTQuMDgsMC0xMC4yLDAtMjAuNCwwLTMwLjYsMGEzLjkzLDMuOTMsMCwwLDEtMy40Ni0xLjU5Yy0zLjM4LTQuMjEtNi45MS04LjMtMTAuMzEtMTIuNDlhMi42OSwyLjY5LDAsMCwxLS40OS0xLjkzUTUzMi40Myw5OS4yNiw1MzgsNjcuNzFjLjA3LS40My4xLS44Ny4xOC0xLjU1aC04LjEyYy40NS0yLjgzLjgyLTUuMzgsMS4yNy03LjkyLDEuMTctNi41NiwyLjM5LTEzLjEyLDMuNTMtMTkuNjkuMTYtLjk0LjU3LTEuMTMsMS40Mi0xLjExLDIuMzksMCw0Ljc4LDAsNy4yNywwQzU0NSwyOS4xNSw1NDYuNDQsMjEsNTQ3Ljg5LDEyLjY1WiIgc3R5bGU9ImZpbGw6IzE3N2QzZjtmaWxsLXJ1bGU6ZXZlbm9kZCIvPjxwYXRoIGQ9Ik0yNDcuODcsMTQ2Ljg1Yy41NS0zLjE1LDEuMDYtNi4xNCwxLjU5LTkuMTJxMy4zMS0xOC43NSw2LjY0LTM3LjVUMjYyLjcxLDYzcTIuMS0xMS44NSw0LjE3LTIzLjcxYy4xNy0xLC40LTEuNTksMS42MS0xLjU5LDExLjI4LDAsMjIuNTYsMCwzMy44MywwSDMwNGMtLjM5LDIuNDYtLjc2LDQuNzUtMS4xOCw3LjRhMTEuMywxMS4zLDAsMCwwLDEuMzQtLjgyYzIuMjQtMS44Nyw0LjQzLTMuODEsNi43Mi01LjYyYTQuMjgsNC4yOCwwLDAsMSwyLjM2LS45NGM0Ljg0LS4wOCw5LjY4LDAsMTQuNTIsMCwuNDIsMCwuODUuMDksMS40Mi4xNS0uNTEsMi44OS0xLDUuNjYtMS40OSw4LjQ0LTEuMDgsNi0yLjIsMTItMy4yMiwxOC0uMTksMS4xMi0uNiwxLjUzLTEuNzYsMS41Mi03LjQ0LDAtMTQuODgsMC0yMi4zMS0uMDctMS4zMiwwLTEuNjYuNTYtMS44NSwxLjZxLS43Miw0LjE5LTEuNDYsOC4zN2wtNi42MywzNy42M3EtMi44MSwxNS45My01LjU4LDMxLjg1Yy0uMjEsMS4yNC0uNjIsMS43LTIsMS43LTExLDAtMjIuMDcsMC0zMy4xLDBDMjQ5LjI1LDE0NywyNDguNjUsMTQ2LjksMjQ3Ljg3LDE0Ni44NVoiIHN0eWxlPSJmaWxsOiMxNjdkM2Y7ZmlsbC1ydWxlOmV2ZW5vZGQiLz48cGF0aCBkPSJNNzQzLjI5LDM3Ljg3Yy0uMjIsMS4zLS40MiwyLjQ0LS42MiwzLjU3cy0uMzgsMi4yNC0uNjIsMy43MmExNC4yNywxNC4yNywwLDAsMCwxLjMxLS44NmMyLjMxLTEuOTMsNC41Ni0zLjksNi45MS01Ljc2YTQsNCwwLDAsMSwyLjI1LS44M2M0Ljc2LS4wNyw5LjUyLDAsMTQuMjgsMCwxLjQ2LDAsMS42Ny4yMywxLjQxLDEuNzItLjg5LDUtMS44LDEwLjA2LTIuNzEsMTUuMDktLjYsMy4zLTEuMjYsNi41OS0xLjc5LDkuOS0uMTgsMS4xNy0uNywxLjQ2LTEuODIsMS40NS03LjMxLDAtMTQuNjMsMC0yMS45NSwwLTEuOCwwLTEuODMsMC0yLjE0LDEuNzQtMS4zOSw3LjgyLTIuNzUsMTUuNjQtNC4xMywyMy40N3EtMy4yLDE4LjEtNi4zOCwzNi4yMWMtMS4wNyw2LTIuMTcsMTIuMS0zLjIsMTguMTYtLjE5LDEuMTMtLjU0LDEuNTgtMS43OSwxLjU3LTExLjItLjA1LTIyLjM5LDAtMzMuNTksMC0xLjYxLDAtMS42MywwLTEuMzYtMS42cTMtMTcuMzQsNi4xLTM0LjY3dDYuMTctMzQuNzljMi4yMi0xMi4zOCw0LjQ5LTI0Ljc1LDYuNjktMzcuMTMuMjEtMS4xOS45NC0xLjA3LDEuNzMtMS4wN2gyNi44N2MyLjI4LDAsNC41NiwwLDYuODQsMEExMS4yMywxMS4yMywwLDAsMSw3NDMuMjksMzcuODdaIiBzdHlsZT0iZmlsbDojMTY3ZDNmO2ZpbGwtcnVsZTpldmVub2RkIi8+PHBhdGggZD0iTTYwNi42MywxNDYuNjJjLjMyLS4yOC42Mi0uNTcuOTQtLjg0LDkuMS04LDE2LjYyLTE3LjE1LDIxLjQtMjguMzcsNi4xOC0xNC40OSw1LjctMjguODctLjcxLTQzLjIxYTgyLjUyLDgyLjUyLDAsMCwwLTI5LTM1LDguNDQsOC40NCwwLDAsMS0xLjMxLTEuNDdsLjIzLS4zMWgxLjM5cTQwLDAsODAtLjA1QTMuMiwzLjIsMCwwLDEsNjgzLDM5Ljc5bC02MS4zNCw4Ljg1YzAsLjExLDAsLjIyLDAsLjMzLDIuODIuMTQsNS42NS4zMSw4LjQ4LjQyTDY3OSw1MS4xN2MzLjA4LjExLDYuMTUuMzMsOS4yMy4zNiwxLjM5LDAsMi4xMS41LDIuMjEsMi4yMUw2MzAsNjMuNGMwLC4xMiwwLC4yMywwLC4zNC42LjA5LDEuMTkuMjMsMS43OS4yNnExMS40NC41NCwyMi44OSwxLDE4LjgxLjg1LDM3LjYzLDEuNjhjMS4xLDAsMS40NS41MiwxLjU1LDEuNXMtLjQyLDEuMy0xLjI5LDEuNDRjLTYuMzYsMS0xMi43LDItMTksM2wtMjguMDUsNC40NWE2MS40Miw2MS40MiwwLDAsMC02Ljk1LDEuMzhjLjUzLjA2LDEuMDcuMTUsMS42LjE3bDI4LjE5LjczYzcuNTEuMTksMTUsLjM2LDIyLjU0LjU3LDIuMzEuMDYsMi4zLjExLDEuNzcsMi4zMy0yLjQ4LDEwLjIzLTcuNzcsMTguOTItMTQuNzQsMjYuNjYtOS4xOSwxMC4yMS0yMC4yOCwxNy45LTMyLjQyLDI0LjE0QTE2NS44OSwxNjUuODksMCwwLDEsNjA3LjcsMTQ2LjhjLS4zLjA3LS42Mi4wNy0uOTMuMTFBMi41OSwyLjU5LDAsMCwwLDYwNi42MywxNDYuNjJaIiBzdHlsZT0iZmlsbDojZGEyMjM0O2ZpbGwtcnVsZTpldmVub2RkIi8+PHBhdGggZD0iTTkxMC45MywxMzcuODNhOS4xMyw5LjEzLDAsMCwxLDkuMjgtOSw5LjA4LDkuMDgsMCwxLDEsMCwxOC4xNUE5LjE0LDkuMTQsMCwwLDEsOTEwLjkzLDEzNy44M1ptOS4yOC03LjE3YTcuMTksNy4xOSwwLDEsMCw2LjksNy4yNkE3LDcsMCwwLDAsOTIwLjIxLDEzMC42NloiIHN0eWxlPSJmaWxsOiMyMDdmNDE7ZmlsbC1ydWxlOmV2ZW5vZGQiLz48cGF0aCBkPSJNOTE2Ljc0LDEzMy41MmExNi44LDE2LjgsMCwwLDEsNS4zNC0uMDZBMi4yNSwyLjI1LDAsMCwxLDkyNCwxMzVhMi4xMSwyLjExLDAsMCwxLTEuMDcsMi43NmMtLjE5LjExLS4zOS4xOS0uNi4yOSwxLjM3LDEsMS40NSwxLjE5LDIuMTYsNC41NS0uNjQsMC0xLjI4LDAtMS45LDAtLjE4LDAtLjQxLS4yNi0uNDgtLjQ1YTE0LjA4LDE0LjA4LDAsMCwxLS40NS0xLjU3Yy0uMzMtMS4yOC0uNzEtMS41OC0yLTEuNmgtLjgzdjMuNjJoLTIuMDZabTIuMTIsMS4zMXYyLjU4aDEuNDNhMi4zOSwyLjM5LDAsMCwwLC41Mi0uMWMuNzUtLjIxLDEuMTMtLjY2LDEuMS0xLjI3YTEuMjcsMS4yNywwLDAsMC0xLjE5LTEuMTlBMTYuMTIsMTYuMTIsMCwwLDAsOTE4Ljg2LDEzNC44M1oiIHN0eWxlPSJmaWxsOiMyMDdmNDE7ZmlsbC1ydWxlOmV2ZW5vZGQiLz48L2c+PC9nPjwvZz48L3N2Zz4="
+  
+  -- Local Variables
+  local CurrentPage=BuildPageNames()[props["page_index"].Value]
+  local RxCount=props["Rx Count"].Value
+  local TxCount=props["Tx Count"].Value
+  
+  if CurrentPage=="Setup" then
+    -- Controls
+    layout["IPAddress"]={PrettyName="Connection~Device's IP Address",Style="Text",Position={124,110},Size={105,16}}
+    layout["Port"]={PrettyName="Connection~Port",Color=White,Position={124,133},Size={105,16}}
+    layout["Password"]={PrettyName="Connection~Password",Style="Text",Position={124,160},Size={105,16}}
+    layout["APIVersion"]={PrettyName="Device Information~Device's API Version",Style="Text",IsReadOnly=true,Position={124,216},Size={105,16}}
+    layout["SysVersion"]={PrettyName="Device Information~Device System Version",Style="Text",IsReadOnly=true,Position={124,241},Size={105,16}}
+    layout["RefreshDevs"]={PrettyName="Device Information~Refresh Discovered Devices",Style="Button",Position={124,267},Size={36,16}}
+    layout["Status"]={PrettyName="Device Information~Connection Status",Style="Textdisplay",FontSize=14,Color=White,IsReadOnly=true,Position={21,317},Size={231,32}}
+    
+    -- Groupbox
+    table.insert(graphics,{Type="GroupBox",Fill=White,StrokeWidth=0,CornerRadius=0,Position={0,0},Size={273,380}})
+    table.insert(graphics,{Type="GroupBox",Fill=BGGray,StrokeWidth=0,CornerRadius=0,Position={0,0},Size={273,48}})
+    table.insert(graphics,{Type="GroupBox",Fill=BGGray,StrokeWidth=0,CornerRadius=0,Position={6,76},Size={261,298}})
+    -- Headers
+    table.insert(graphics,{Type="Header",Text="Connect to Device",Position={16,88},Size={241,6},FontSize=14})
+    table.insert(graphics,{Type="Header",Text="Device Information",Position={16,192},Size={241,6},FontSize=14})
+    table.insert(graphics,{Type="Header",Text="Connection Status",Position={16,296},Size={241,6},FontSize=14})
+    -- Text
+    table.insert(graphics,{Type="Label",Text="Connection Setup",Position={6,54},Size={150,22},Color="Black",FontSize=18,Font="Roboto",FontStyle="Bold",HTextAlign="Left"})
+    table.insert(graphics,{Type="Text",Text="IP Address:",Position={26,110},Size={86,16},Color="Black",FontSize=11,HTextAlign="Right"})
+    table.insert(graphics,{Type="Text",Text="Port:",Position={20,133},Size={92,16},Color="Black",FontSize=11,HTextAlign="Right"})
+    table.insert(graphics,{Type="Text",Text="Password:",Position={20,160},Size={92,16},Color="Black",FontSize=11,HTextAlign="Right"})
+    table.insert(graphics,{Type="Text",Text="API Version:",Position={26,216},Size={92,16},Color="Black",FontSize=11,HTextAlign="Right"})
+    table.insert(graphics,{Type="Text",Text="System Version:",Position={20,241},Size={92,16},Color="Black",FontSize=11,HTextAlign="Right"})
+    table.insert(graphics,{Type="Text",Text="Refresh Devices:",Position={20,267},Size={92,16},Color="Black",FontSize=11,HTextAlign="Right"})
+    -- Version Number
+    table.insert(graphics,{Type="Label",Text=string.format("Version %s",PluginInfo.Version),FontSize=9,Position={189,362},Size={76,12},HTextAlign="Right"})
+    -- Logo
+    table.insert(graphics,{Type="Svg",Image=WyrestormLogo,Position={52,7},Size={170,35}})
+  
+  elseif CurrentPage=="Tx 1-32" then
+    -- Groupbox
+    if TxCount>32 then offset=32 else offset=TxCount end
+    table.insert(graphics,{Type="GroupBox",Fill=White,StrokeWidth=0,CornerRadius=0,Position={0,0},Size={287,162+(19*offset)}})
+    table.insert(graphics,{Type="GroupBox",Fill=BGGray,StrokeWidth=0,CornerRadius=0,Position={0,0},Size={287,48}})
+    table.insert(graphics,{Type="GroupBox",Fill=BGGray,StrokeWidth=0,CornerRadius=0,Position={6,76},Size={275,80+(19*offset)}})
+    -- Headers
+    table.insert(graphics,{Type="Header",Text="Transmitters",Position={20,88},Size={247,6},FontSize=14})
+    -- Text
+    table.insert(graphics,{Type="Label",Text="Transmitters",Position={6,54},Size={150,22},Color="Black",FontSize=18,Font="Roboto",FontStyle="Bold",HTextAlign="Left"})
+    table.insert(graphics,{Type="Text",Text="Name",Position={69,102},Size={39,14},Color="Black",FontSize=10})
+    table.insert(graphics,{Type="Text",Text="Reboot",Position={135,102},Size={48,14},Color="Black",FontSize=10})
+    table.insert(graphics,{Type="Text",Text="HDCP",Position={184,102},Size={39,14},Color="Black",FontSize=10})
+    table.insert(graphics,{Type="Text",Text="Online",Position={225,102},Size={34,14},Color="Black",FontSize=10})
+    -- Version Number
+    table.insert(graphics,{Type="Label",Text=string.format("Version %s",PluginInfo.Version),FontSize=9,Position={204,144+(19*offset)},Size={76,12},HTextAlign="Right"})
+    -- Logo
+    table.insert(graphics,{Type="Svg",Image=WyrestormLogo,Position={59,7},Size={170,35}})
+  
+    -- Controls
+    if TxCount>1 then
+      if TxCount<33 then
+        for i=1,TxCount do
+          layout["TxName "..i]={PrettyName="Tx~Tx Names~Tx Name "..i,Style="ComboBox",Position={42,98+(19*i)},Size={93,16}}
+          layout["TxReboot "..i]={PrettyName="Tx~Tx Reboot~Tx Reboot "..i,Style="Button",Position={141,98+(19*i)},Size={36,16}}
+          layout["TxHDCP "..i]={PrettyName="Tx~Tx HDCP~Tx HDCP "..i,Style="LED",Position={195,98+(19*i)},Size={16,16}}
+          layout["TxOnline "..i]={PrettyName="Tx~Tx Online~Tx Online "..i,Style="LED",Position={234,98+(19*i)},Size={16,16}}
+          table.insert(graphics,{Type="Text",Text=string.format("%s",i),Position={14,98+(19*i)},Size={28,16},Color="Black",FontSize=10})
+        end
+      else
+        for i=1,32 do
+          layout["TxName "..i]={PrettyName="Tx~Tx Names~Tx Name "..i,Style="ComboBox",Position={42,98+(19*i)},Size={93,16}}
+          layout["TxReboot "..i]={PrettyName="Tx~Tx Reboot~Tx Reboot "..i,Style="Button",Position={141,98+(19*i)},Size={36,16}}
+          layout["TxHDCP "..i]={PrettyName="Tx~Tx HDCP~Tx HDCP "..i,Style="LED",Position={195,98+(19*i)},Size={16,16}}
+          layout["TxOnline "..i]={PrettyName="Tx~Tx Online~Tx Online "..i,Style="LED",Position={234,98+(19*i)},Size={16,16}}
+          table.insert(graphics,{Type="Text",Text=string.format("%s",i),Position={14,98+(19*i)},Size={28,16},Color="Black",FontSize=10})
+        end
+      end
+    else
+      layout["TxName"]={PrettyName="Tx~Tx Name",Style="ComboBox",Size={93,16},Position={42,117}}
+      layout["TxReboot"]={PrettyName="Tx~Tx Reboot",Style="Button",Position={141,117},Size={36,16}}
+      layout["TxHDCP"]={PrettyName="Tx~Tx HDCP",Style="LED",Position={195,117},Size={16,16}}
+      layout["TxOnline"]={PrettyName="Tx~Tx Online",Style="LED",Position={234,117},Size={16,16}}
+      table.insert(graphics,{Type="Text",Text="1",Position={14,117},Size={28,16},Color="Black",FontSize=10})
+    end
+  
+  elseif CurrentPage=="Tx 33-64" then
+    -- Groupbox
+    if TxCount>64 then offset=32 else offset=TxCount-32 end
+    table.insert(graphics,{Type="GroupBox",Fill=White,StrokeWidth=0,CornerRadius=0,Position={0,0},Size={287,162+(19*offset)}})
+    table.insert(graphics,{Type="GroupBox",Fill=BGGray,StrokeWidth=0,CornerRadius=0,Position={0,0},Size={287,48}})
+    table.insert(graphics,{Type="GroupBox",Fill=BGGray,StrokeWidth=0,CornerRadius=0,Position={6,76},Size={275,80+(19*offset)}})
+    -- Headers
+    table.insert(graphics,{Type="Header",Text="Transmitters",Position={20,88},Size={247,6},FontSize=14})
+    -- Text
+    table.insert(graphics,{Type="Label",Text="Transmitters",Position={6,54},Size={150,22},Color="Black",FontSize=18,Font="Roboto",FontStyle="Bold",HTextAlign="Left"})
+    table.insert(graphics,{Type="Text",Text="Name",Position={69,102},Size={39,14},Color="Black",FontSize=10})
+    table.insert(graphics,{Type="Text",Text="Reboot",Position={135,102},Size={48,14},Color="Black",FontSize=10})
+    table.insert(graphics,{Type="Text",Text="HDCP",Position={184,102},Size={39,14},Color="Black",FontSize=10})
+    table.insert(graphics,{Type="Text",Text="Online",Position={225,102},Size={34,14},Color="Black",FontSize=10})
+    -- Version Number
+    table.insert(graphics,{Type="Label",Text=string.format("Version %s",PluginInfo.Version),FontSize=9,Position={204,144+(19*offset)},Size={76,12},HTextAlign="Right"})
+    -- Logo
+    table.insert(graphics,{Type="Svg",Image=WyrestormLogo,Position={59,7},Size={170,35}})
+  
+    -- Controls
+    if TxCount<65 then
+      for i=33,TxCount do
+        layout["TxName "..i]={PrettyName="Tx~Tx Names~Tx Name "..i,Style="ComboBox",Position={42,98+(19*(i-32))},Size={93,16}}
+        layout["TxReboot "..i]={PrettyName="Tx~Tx Reboot~Tx Reboot "..i,Style="Button",Position={141,98+(19*(i-32))},Size={36,16}}
+        layout["TxHDCP "..i]={PrettyName="Tx~Tx HDCP~Tx HDCP "..i,Style="LED",Position={195,98+(19*(i-32))},Size={16,16}}
+        layout["TxOnline "..i]={PrettyName="Tx~Tx Online~Tx Online "..i,Style="LED",Position={234,98+(19*(i-32))},Size={16,16}}
+        table.insert(graphics,{Type="Text",Text=string.format("%s",i),Position={14,98+(19*(i-32))},Size={28,16},Color="Black",FontSize=10})
+      end
+    else
+      for i=33,64 do
+        layout["TxName "..i]={PrettyName="Tx~Tx Names~Tx Name "..i,Style="ComboBox",Position={42,98+(19*(i-32))},Size={93,16}}
+        layout["TxReboot "..i]={PrettyName="Tx~Tx Reboot~Tx Reboot "..i,Style="Button",Position={141,98+(19*(i-32))},Size={36,16}}
+        layout["TxHDCP "..i]={PrettyName="Tx~Tx HDCP~Tx HDCP "..i,Style="LED",Position={195,98+(19*(i-32))},Size={16,16}}
+        layout["TxOnline "..i]={PrettyName="Tx~Tx Online~Tx Online "..i,Style="LED",Position={234,98+(19*(i-32))},Size={16,16}}
+        table.insert(graphics,{Type="Text",Text=string.format("%s",i),Position={14,98+(19*(i-32))},Size={28,16},Color="Black",FontSize=10})
+      end
+    end
+  
+  elseif CurrentPage=="Tx 65-96" then
+    -- Groupbox
+    if TxCount>96 then offset=32 else offset=TxCount-64 end
+    table.insert(graphics,{Type="GroupBox",Fill=White,StrokeWidth=0,CornerRadius=0,Position={0,0},Size={287,162+(19*offset)}})
+    table.insert(graphics,{Type="GroupBox",Fill=BGGray,StrokeWidth=0,CornerRadius=0,Position={0,0},Size={287,48}})
+    table.insert(graphics,{Type="GroupBox",Fill=BGGray,StrokeWidth=0,CornerRadius=0,Position={6,76},Size={275,80+(19*offset)}})
+    -- Headers
+    table.insert(graphics,{Type="Header",Text="Transmitters",Position={20,88},Size={247,6},FontSize=14})
+    -- Text
+    table.insert(graphics,{Type="Label",Text="Transmitters",Position={6,54},Size={150,22},Color="Black",FontSize=18,Font="Roboto",FontStyle="Bold",HTextAlign="Left"})
+    table.insert(graphics,{Type="Text",Text="Name",Position={69,102},Size={39,14},Color="Black",FontSize=10})
+    table.insert(graphics,{Type="Text",Text="Reboot",Position={135,102},Size={48,14},Color="Black",FontSize=10})
+    table.insert(graphics,{Type="Text",Text="HDCP",Position={184,102},Size={39,14},Color="Black",FontSize=10})
+    table.insert(graphics,{Type="Text",Text="Online",Position={225,102},Size={34,14},Color="Black",FontSize=10})
+    -- Version Number
+    table.insert(graphics,{Type="Label",Text=string.format("Version %s",PluginInfo.Version),FontSize=9,Position={204,144+(19*offset)},Size={76,12},HTextAlign="Right"})
+    -- Logo
+    table.insert(graphics,{Type="Svg",Image=WyrestormLogo,Position={59,7},Size={170,35}})
+    
+    -- Controls
+    if TxCount<97 then
+      for i=65,TxCount do
+        layout["TxName "..i]={PrettyName="Tx~Tx Names~Tx Name "..i,Style="ComboBox",Position={42,98+(19*(i-64))},Size={93,16}}
+        layout["TxReboot "..i]={PrettyName="Tx~Tx Reboot~Tx Reboot "..i,Style="Button",Position={141,98+(19*(i-64))},Size={36,16}}
+        layout["TxHDCP "..i]={PrettyName="Tx~Tx HDCP~Tx HDCP "..i,Style="LED",Position={195,98+(19*(i-64))},Size={16,16}}
+        layout["TxOnline "..i]={PrettyName="Tx~Tx Online~Tx Online "..i,Style="LED",Position={234,98+(19*(i-64))},Size={16,16}}
+        table.insert(graphics,{Type="Text",Text=string.format("%s",i),Position={14,98+(19*(i-64))},Size={28,16},Color="Black",FontSize=10})
+      end
+    else
+      for i=65,96 do
+        layout["TxName "..i]={PrettyName="Tx~Tx Names~Tx Name "..i,Style="ComboBox",Position={42,98+(19*(i-64))},Size={93,16}}
+        layout["TxReboot "..i]={PrettyName="Tx~Tx Reboot~Tx Reboot "..i,Style="Button",Position={141,98+(19*(i-64))},Size={36,16}}
+        layout["TxHDCP "..i]={PrettyName="Tx~Tx HDCP~Tx HDCP "..i,Style="LED",Position={195,98+(19*(i-64))},Size={16,16}}
+        layout["TxOnline "..i]={PrettyName="Tx~Tx Online~Tx Online "..i,Style="LED",Position={234,98+(19*(i-64))},Size={16,16}}
+        table.insert(graphics,{Type="Text",Text=string.format("%s",i),Position={14,98+(19*(i-64))},Size={28,16},Color="Black",FontSize=10})
+      end
+    end
+  
+  elseif CurrentPage=="Tx 97-128" then
+    -- Groupbox
+    offset=TxCount-96
+    table.insert(graphics,{Type="GroupBox",Fill=White,StrokeWidth=0,CornerRadius=0,Position={0,0},Size={287,162+(19*offset)}})
+    table.insert(graphics,{Type="GroupBox",Fill=BGGray,StrokeWidth=0,CornerRadius=0,Position={0,0},Size={287,48}})
+    table.insert(graphics,{Type="GroupBox",Fill=BGGray,StrokeWidth=0,CornerRadius=0,Position={6,76},Size={275,80+(19*offset)}})
+    -- Headers
+    table.insert(graphics,{Type="Header",Text="Transmitters",Position={20,88},Size={247,6},FontSize=14})
+    -- Text
+    table.insert(graphics,{Type="Label",Text="Transmitters",Position={6,54},Size={150,22},Color="Black",FontSize=18,Font="Roboto",FontStyle="Bold",HTextAlign="Left"})
+    table.insert(graphics,{Type="Text",Text="Name",Position={69,102},Size={39,14},Color="Black",FontSize=10})
+    table.insert(graphics,{Type="Text",Text="Reboot",Position={135,102},Size={48,14},Color="Black",FontSize=10})
+    table.insert(graphics,{Type="Text",Text="HDCP",Position={184,102},Size={39,14},Color="Black",FontSize=10})
+    table.insert(graphics,{Type="Text",Text="Online",Position={225,102},Size={34,14},Color="Black",FontSize=10})
+    -- Version Number
+    table.insert(graphics,{Type="Label",Text=string.format("Version %s",PluginInfo.Version),FontSize=9,Position={204,144+(19*offset)},Size={76,12},HTextAlign="Right"})
+    -- Logo
+    table.insert(graphics,{Type="Svg",Image=WyrestormLogo,Position={59,7},Size={170,35}})
+  
+    -- Controls
+    for i=97,TxCount do
+      layout["TxName "..i]={PrettyName="Tx~Tx Names~Tx Name "..i,Style="ComboBox",Position={42,98+(19*(i-96))},Size={93,16}}
+      layout["TxReboot "..i]={PrettyName="Tx~Tx Reboot~Tx Reboot "..i,Style="Button",Position={141,98+(19*(i-96))},Size={36,16}}
+      layout["TxHDCP "..i]={PrettyName="Tx~Tx HDCP~Tx HDCP "..i,Style="LED",Position={195,98+(19*(i-96))},Size={16,16}}
+      layout["TxOnline "..i]={PrettyName="Tx~Tx Online~Tx Online "..i,Style="LED",Position={234,98+(19*(i-96))},Size={16,16}}
+      table.insert(graphics,{Type="Text",Text=string.format("%s",i),Position={14,98+(19*(i-96))},Size={28,16},Color="Black",FontSize=10})
+    end
+  
+  elseif CurrentPage=="Rx 1-32" then
+    -- Groupbox
+    if RxCount>32 then offset=32 else offset=RxCount end
+    table.insert(graphics,{Type="GroupBox",Fill=White,StrokeWidth=0,CornerRadius=0,Position={0,0},Size={330,162+(19*offset)}})
+    table.insert(graphics,{Type="GroupBox",Fill=BGGray,StrokeWidth=0,CornerRadius=0,Position={0,0},Size={330,48}})
+    table.insert(graphics,{Type="GroupBox",Fill=BGGray,StrokeWidth=0,CornerRadius=0,Position={6,76},Size={318,80+(19*offset)}})
+    -- Headers
+    table.insert(graphics,{Type="Header",Text="Receivers",Position={20,88},Size={290,6},FontSize=14})
+  
+    -- Text
+    table.insert(graphics,{Type="Label",Text="Receivers",Position={6,54},Size={150,22},Color="Black",FontSize=18,Font="Roboto",FontStyle="Bold",HTextAlign="Left"})
+    table.insert(graphics,{Type="Text",Text="Name",Position={69,102},Size={39,14},Color="Black",FontSize=10})
+    table.insert(graphics,{Type="Text",Text="Source",Position={161,102},Size={48,14},Color="Black",FontSize=10})
+    table.insert(graphics,{Type="Text",Text="Reboot",Position={228,102},Size={48,14},Color="Black",FontSize=10})
+    table.insert(graphics,{Type="Text",Text="Online",Position={274,102},Size={35,14},Color="Black",FontSize=10})
+    -- Version Number
+    table.insert(graphics,{Type="Label",Text=string.format("Version %s",PluginInfo.Version),FontSize=9,Position={246,143+(19*offset)},Size={76,12},HTextAlign="Right"})
+    -- Logo
+    table.insert(graphics,{Type="Svg",Image=WyrestormLogo,Position={80,7},Size={170,35}}) 
+  
+    -- Controls
+    if RxCount>1 then
+      if RxCount<33 then
+        for i=1,RxCount do
+          layout["RxName "..i]={PrettyName="Rx~Rx Names~Rx Name "..i,Style="ComboBox",Position={42,98+(19*i)},Size={93,16}}
+          layout["Source "..i]={PrettyName="Rx~Rx Sources~Rx Source "..i,Style="ComboBox",Position={138,98+(19*i)},Size={93,16}}
+          layout["RxReboot "..i]={PrettyName="Rx~Rx Reboot~Rx Reboot "..i,Style="Button",Position={234,98+(19*i)},Size={36,16}}
+          layout["RxOnline "..i]={PrettyName="Rx~Rx Online~Rx Online "..i,Style="LED",Position={283,98+(19*i)},Size={16,16}}
+          table.insert(graphics,{Type="Text",Text=string.format("%s",i),Position={14,98+(19*i)},Size={28,16},Color="Black",FontSize=10})
+        end
+      else
+        for i=1,32 do
+          layout["RxName "..i]={PrettyName="Rx~Rx Names~Rx Name "..i,Style="ComboBox",Position={42,98+(19*i)},Size={93,16}}
+          layout["Source "..i]={PrettyName="Rx~Rx Sources~Rx Source "..i,Style="ComboBox",Position={138,98+(19*i)},Size={93,16}}
+          layout["RxReboot "..i]={PrettyName="Rx~Rx Reboot~Rx Reboot "..i,Style="Button",Position={234,98+(19*i)},Size={36,16}}
+          layout["RxOnline "..i]={PrettyName="Rx~Rx Online~Rx Online "..i,Style="LED",Position={283,98+(19*i)},Size={16,16}}
+          table.insert(graphics,{Type="Text",Text=string.format("%s",i),Position={14,98+(19*i)},Size={28,16},Color="Black",FontSize=10})
+        end
+      end
+    else
+      layout["RxName"]={PrettyName="Rx~Rx Name",Style="ComboBox",Size={93,16},Position={42,117}}
+      layout["Source"]={PrettyName="Rx~Rx Source",Style="ComboBox",Position={138,117},Size={93,16}}
+      layout["RxReboot"]={PrettyName="Rx~Rx Reboot",Style="Button",Position={234,117},Size={36,16}}
+      layout["RxOnline"]={PrettyName="Rx~Rx Online",Style="LED",Position={283,117},Size={16,16}}
+      table.insert(graphics,{Type="Text",Text="1",Position={14,117},Size={28,16},Color="Black",FontSize=10})
+    end
+  
+  elseif CurrentPage=="Rx 33-64" then
+    -- Groupbox
+    if RxCount>64 then offset=32 else offset=RxCount-32 end
+    table.insert(graphics,{Type="GroupBox",Fill=White,StrokeWidth=0,CornerRadius=0,Position={0,0},Size={330,162+(19*offset)}})
+    table.insert(graphics,{Type="GroupBox",Fill=BGGray,StrokeWidth=0,CornerRadius=0,Position={0,0},Size={330,48}})
+    table.insert(graphics,{Type="GroupBox",Fill=BGGray,StrokeWidth=0,CornerRadius=0,Position={6,76},Size={318,80+(19*offset)}})
+    -- Headers
+    table.insert(graphics,{Type="Header",Text="Receivers",Position={20,88},Size={290,6},FontSize=14})
+    -- Text
+    table.insert(graphics,{Type="Label",Text="Receivers",Position={6,54},Size={150,22},Color="Black",FontSize=18,Font="Roboto",FontStyle="Bold",HTextAlign="Left"})
+    table.insert(graphics,{Type="Text",Text="Name",Position={69,102},Size={39,14},Color="Black",FontSize=10})
+    table.insert(graphics,{Type="Text",Text="Source",Position={161,102},Size={48,14},Color="Black",FontSize=10})
+    table.insert(graphics,{Type="Text",Text="Reboot",Position={228,102},Size={48,14},Color="Black",FontSize=10})
+    table.insert(graphics,{Type="Text",Text="Online",Position={274,102},Size={35,14},Color="Black",FontSize=10})
+    -- Version Number
+    table.insert(graphics,{Type="Label",Text=string.format("Version %s",PluginInfo.Version),FontSize=9,Position={246,143+(19*offset)},Size={76,12},HTextAlign="Right"})
+    -- Logo
+    table.insert(graphics,{Type="Svg",Image=WyrestormLogo,Position={80,7},Size={170,35}}) 
+  
+    -- Controls
+    if RxCount<65 then
+      for i=33,RxCount do
+        layout["RxName "..i]={PrettyName="Rx~Rx Names~Rx Name "..i,Style="ComboBox",Position={42,98+(19*(i-32))},Size={93,16}}
+        layout["Source "..i]={PrettyName="Rx~Rx Sources~Rx Source "..i,Style="ComboBox",Position={138,98+(19*(i-32))},Size={93,16}}
+        layout["RxReboot "..i]={PrettyName="Rx~Rx Reboot~Rx Reboot "..i,Style="Button",Position={234,98+(19*(i-32))},Size={36,16}}
+        layout["RxOnline "..i]={PrettyName="Rx~Rx Online~Rx Online "..i,Style="LED",Position={283,98+(19*(i-32))},Size={16,16}}
+        table.insert(graphics,{Type="Text",Text=string.format("%s",i),Position={14,98+(19*(i-32))},Size={28,16},Color="Black",FontSize=10})
+      end
+    else
+      for i=33,64 do
+        layout["RxName "..i]={PrettyName="Rx~Rx Names~Rx Name "..i,Style="ComboBox",Position={42,98+(19*(i-32))},Size={93,16}}
+        layout["Source "..i]={PrettyName="Rx~Rx Sources~Rx Source "..i,Style="ComboBox",Position={138,98+(19*(i-32))},Size={93,16}}
+        layout["RxReboot "..i]={PrettyName="Rx~Rx Reboot~Rx Reboot "..i,Style="Button",Position={234,98+(19*(i-32))},Size={36,16}}
+        layout["RxOnline "..i]={PrettyName="Rx~Rx Online~Rx Online "..i,Style="LED",Position={283,98+(19*(i-32))},Size={16,16}}
+        table.insert(graphics,{Type="Text",Text=string.format("%s",i),Position={14,98+(19*(i-32))},Size={28,16},Color="Black",FontSize=10})
+      end
+    end
+  
+  elseif CurrentPage=="Rx 65-96" then
+    -- Groupbox
+    if RxCount>96 then offset=32 else offset=RxCount-64 end
+    table.insert(graphics,{Type="GroupBox",Fill=White,StrokeWidth=0,CornerRadius=0,Position={0,0},Size={330,162+(19*offset)}})
+    table.insert(graphics,{Type="GroupBox",Fill=BGGray,StrokeWidth=0,CornerRadius=0,Position={0,0},Size={330,48}})
+    table.insert(graphics,{Type="GroupBox",Fill=BGGray,StrokeWidth=0,CornerRadius=0,Position={6,76},Size={318,80+(19*offset)}})
+    -- Headers
+    table.insert(graphics,{Type="Header",Text="Receivers",Position={20,88},Size={290,6},FontSize=14})
+    -- Text
+    table.insert(graphics,{Type="Label",Text="Receivers",Position={6,54},Size={150,22},Color="Black",FontSize=18,Font="Roboto",FontStyle="Bold",HTextAlign="Left"})
+    table.insert(graphics,{Type="Text",Text="Name",Position={69,102},Size={39,14},Color="Black",FontSize=10})
+    table.insert(graphics,{Type="Text",Text="Source",Position={161,102},Size={48,14},Color="Black",FontSize=10})
+    table.insert(graphics,{Type="Text",Text="Reboot",Position={228,102},Size={48,14},Color="Black",FontSize=10})
+    table.insert(graphics,{Type="Text",Text="Online",Position={274,102},Size={35,14},Color="Black",FontSize=10})
+    -- Version Number
+    table.insert(graphics,{Type="Label",Text=string.format("Version %s",PluginInfo.Version),FontSize=9,Position={246,143+(19*offset)},Size={76,12},HTextAlign="Right"})
+    -- Logo
+    table.insert(graphics,{Type="Svg",Image=WyrestormLogo,Position={80,7},Size={170,35}}) 
+  
+    -- Controls
+    if RxCount<97 then
+      for i=65,RxCount do
+        layout["RxName "..i]={PrettyName="Rx~Rx Names~Rx Name "..i,Style="ComboBox",Position={42,98+(19*(i-64))},Size={93,16}}
+        layout["Source "..i]={PrettyName="Rx~Rx Sources~Rx Source "..i,Style="ComboBox",Position={138,98+(19*(i-64))},Size={93,16}}
+        layout["RxReboot "..i]={PrettyName="Rx~Rx Reboot~Rx Reboot "..i,Style="Button",Position={234,98+(19*(i-64))},Size={36,16}}
+        layout["RxOnline "..i]={PrettyName="Rx~Rx Online~Rx Online "..i,Style="LED",Position={283,98+(19*(i-64))},Size={16,16}}
+        table.insert(graphics,{Type="Text",Text=string.format("%s",i),Position={14,98+(19*(i-64))},Size={28,16},Color="Black",FontSize=10})
+      end
+    else
+      for i=65,96 do
+        layout["RxName "..i]={PrettyName="Rx~Rx Names~Rx Name "..i,Style="ComboBox",Position={42,98+(19*(i-64))},Size={93,16}}
+        layout["Source "..i]={PrettyName="Rx~Rx Sources~Rx Source "..i,Style="ComboBox",Position={138,98+(19*(i-64))},Size={93,16}}
+        layout["RxReboot "..i]={PrettyName="Rx~Rx Reboot~Rx Reboot "..i,Style="Button",Position={234,98+(19*(i-64))},Size={36,16}}
+        layout["RxOnline "..i]={PrettyName="Rx~Rx Online~Rx Online "..i,Style="LED",Position={283,98+(19*(i-64))},Size={16,16}}
+        table.insert(graphics,{Type="Text",Text=string.format("%s",i),Position={14,98+(19*(i-64))},Size={28,16},Color="Black",FontSize=10})
+      end
+    end
+  
+  elseif CurrentPage=="Rx 97-128" then
+    -- Groupbox
+    offset=RxCount-96
+    table.insert(graphics,{Type="GroupBox",Fill=White,StrokeWidth=0,CornerRadius=0,Position={0,0},Size={330,162+(19*offset)}})
+    table.insert(graphics,{Type="GroupBox",Fill=BGGray,StrokeWidth=0,CornerRadius=0,Position={0,0},Size={330,48}})
+    table.insert(graphics,{Type="GroupBox",Fill=BGGray,StrokeWidth=0,CornerRadius=0,Position={6,76},Size={318,80+(19*offset)}})
+    -- Headers
+    table.insert(graphics,{Type="Header",Text="Receivers",Position={20,88},Size={290,6},FontSize=14})
+    -- Text
+    table.insert(graphics,{Type="Label",Text="Receivers",Position={6,54},Size={150,22},Color="Black",FontSize=18,Font="Roboto",FontStyle="Bold",HTextAlign="Left"})
+    table.insert(graphics,{Type="Text",Text="Name",Position={69,102},Size={39,14},Color="Black",FontSize=10})
+    table.insert(graphics,{Type="Text",Text="Source",Position={161,102},Size={48,14},Color="Black",FontSize=10})
+    table.insert(graphics,{Type="Text",Text="Reboot",Position={228,102},Size={48,14},Color="Black",FontSize=10})
+    table.insert(graphics,{Type="Text",Text="Online",Position={274,102},Size={35,14},Color="Black",FontSize=10})
+    -- Version Number
+    table.insert(graphics,{Type="Label",Text=string.format("Version %s",PluginInfo.Version),FontSize=9,Position={246,143+(19*offset)},Size={76,12},HTextAlign="Right"})
+    -- Logo
+    table.insert(graphics,{Type="Svg",Image=WyrestormLogo,Position={80,7},Size={170,35}}) 
+    
+    -- Controls
+    for i=97,RxCount do
+      layout["RxName "..i]={PrettyName="Rx~Rx Names~Rx Name "..i,Style="ComboBox",Position={42,98+(19*(i-96))},Size={93,16}}
+      layout["Source "..i]={PrettyName="Rx~Rx Sources~Rx Source "..i,Style="ComboBox",Position={138,98+(19*(i-96))},Size={93,16}}
+      layout["RxReboot "..i]={PrettyName="Rx~Rx Reboot~Rx Reboot "..i,Style="Button",Position={234,98+(19*(i-96))},Size={36,16}}
+      layout["RxOnline "..i]={PrettyName="Rx~Rx Online~Rx Online "..i,Style="LED",Position={283,98+(19*(i-96))},Size={16,16}}
+      table.insert(graphics,{Type="Text",Text=string.format("%s",i),Position={14,98+(19*(i-96))},Size={28,16},Color="Black",FontSize=10})
+    end
+  end
+  return layout, graphics
+end
+
+--Start event based logic
+if Controls then
+  -- Required
+  rapidjson=require("rapidjson")
+  
+  
+  -- Control aliases
+  Status=Controls.Status
+  IPAddress=Controls.IPAddress
+  Port=Controls.Port
+  Password=Controls.Password
+  APIVersion=Controls.APIVersion
+  SysVersion=Controls.SysVersion
+  RefreshDevs=Controls.RefreshDevs
+  
+  
+  -- Variables and flags
+  DebugTx=false
+  DebugRx=false
+  DebugFunction=false
+  DebugPrint=Properties["Debug Print"].Value
+  RxCount=Properties["Rx Count"].Value
+  TxCount=Properties["Tx Count"].Value
+  TelnetActive=false
+  FullPacket=true
+  jdata=""
+  MatrixDump=false
+  
+  
+  -- Sockets
+  Wyrestorm = TcpSocket.New()
+  Wyrestorm.ReadTimeout = 0
+  Wyrestorm.WriteTimeout = 0
+  Wyrestorm.ReconnectTimeout = 5
+  Port.Value = 23
+  
+  
+  
+  -- Timers, tables, and constants
+  StatusState = { OK = 0, COMPROMISED = 1, FAULT = 2, NOTPRESENT = 3, MISSING = 4, INITIALIZING = 5 }
+  PollTimer = Timer.New()
+  PollTime = 3
+  TxDevices,RxDevices,TxChoices,RxChoices={},{},{},{}
+  Tx100,Tx200,Tx400,Tx600={},{},{},{}
+  
+  
+  -- Helper functions
+  function TablePretty(tbl,sort)
+    if DebugFnct then print("TablePretty Called") end
+    return rapidjson.encode(tbl,{ pretty=true, sort_keys=sort })
+  end
+  
+  -- A function to determine common print statement scenarios for troubleshooting
+  function SetupDebugPrint()
+    if DebugPrint=="Tx/Rx" then
+      DebugTx,DebugRx=true,true
+    elseif DebugPrint=="Tx" then
+      DebugTx=true
+    elseif DebugPrint=="Rx" then
+      DebugRx=true
+    elseif DebugPrint=="Function Calls" then
+      DebugFunction=true
+    elseif DebugPrint=="All" then
+      DebugTx,DebugRx,DebugFunction=true,true,true
+    end
+  end
+  
+  -- Update the Status control
+  function ReportStatus(state,msg)
+    if DebugFunction then print("ReportStatus() Called") end
+    local msg=msg or ""
+    Status.Value=StatusState[state]
+    Status.String=msg
+  end
+  
+  -- Send data to device
+  function Send(cmd)
+    if DebugFunction then print("Send() Called") end
+    if DebugTx then print("Tx: "..cmd) end
+    if IsConnected() then Wyrestorm:Write(string.format(cmd.."\r\n")) end
+  end
+  
+  function SetDevInfo(data)
+    if DebugFunction then print("SetDevInfo() Called") end
+    name,value=string.match(data,"(.+):(.+)")
+    if string.find(name,"API version") then
+      APIVersion.String=value
+    elseif string.find(name,"System version") then
+      SysVersion.String=value
+    end
+  end
+  
+  function CredentialsEntered()
+    if DebugFunction then print("CredentialsEntered() Called") end
+    if IPAddress.String ~= "" then 
+      return true 
+    else
+      ReportStatus("MISSING","Enter IP Address")
+      return false
+    end
+  end
+  
+  -- A function to clear controls/flags/variables and clears tables
+  function ClearVariables()
+    if DebugFunction then print("ClearVariables() Called") end
+    TelnetActive,FullPacket,MatrixDump=false,true,false
+    jdata,rx="",""
+    SysVersion.String,APIVersion.String="",""
+    TxDevices,RxDevices,TxChoices,RxChoices={},{},{},{}
+  end
+  
+  -- A function to trigger other functions or set flags if disconnected
+  function Disconnected(state,msg)
+    if DebugFunction then print("Disconnect() Called") end
+    local msg=msg or ""
+    if state~=nil then ReportStatus(state,msg) end
+    PollTimer:Stop()
+    ClearVariables()
+  end
+  
+  -- A function to handle connection
+  function Connect()
+    if DebugFunction then print("Connect() Called") end
+    if IsConnected() then Wyrestorm:Disconnect() Disconnected("MISSING") end
+    if CredentialsEntered() then Wyrestorm:Connect(IPAddress.String,Port.Value) end
+  end
+  
+  function TelnetLogin(rx)
+    if DebugFunction then print("TelnetLogin() Called") end
+    if string.find(rx,"Welcome to NetworkHD") then
+      Connected()
+    elseif string.find(rx,"Permission denied") then
+      Disconnected("FAULT","Check Password")
+    elseif string.find(rx,"password:") then
+      Send(Password.String)
+    else
+      Send("")
+    end
+  end
+  
+  -- A function to trigger other functions once connected
+  function Connected()
+    if DebugFunction then print("Connected() Called") end
+    ReportStatus("OK")
+    TelnetActive=true
+    GetDeviceInfo()
+    PollTimer:Start(PollTime)
+  end
+  
+  function IsConnected()
+    if DebugFunction then print("IsConnected() Called") end
+    return Wyrestorm.IsConnected
+  end
+  
+  -- Initial data grab from device
+  function GetDeviceInfo()
+    if DebugFunction then print("GetDeviceInfo() Called") end
+    Send("config get version")
+    Send("config get device info")
+  end
+  
+  -- Poll function for updates and state changes
+  function PollDevice()
+    if DebugFunction then print("PollDevice() Called") end
+    Send("config get version")
+  end
+  
+  function FilterTxModels()
+    if DebugFunction then print("FilterTxModels() Called") end
+    Tx100,Tx200,Tx400,Tx600={},{},{},{}
+    for i=1,#TxDevices do 
+      if string.find(TxDevices[i]["name"],"-100-") or string.find(TxDevices[i]["name"],"-110-") or string.find(TxDevices[i]["name"],"-140-") then 
+        if TxDevices[i]['aliasname'] ~= "" then table.insert(Tx100,TxDevices[i]['aliasname']) else table.insert(Tx100,TxDevices[i]['name']) end
+      elseif string.find(TxDevices[i]["name"],"-200-") or string.find(TxDevices[i]["name"],"-250-") then 
+        if TxDevices[i]['aliasname'] ~= "" then table.insert(Tx200,TxDevices[i]['aliasname']) else table.insert(Tx200,TxDevices[i]['name']) end
+      elseif string.find(TxDevices[i]["name"],"-400-") then 
+        if TxDevices[i]['aliasname'] ~= "" then table.insert(Tx400,TxDevices[i]['aliasname']) else table.insert(Tx400,TxDevices[i]['name']) end
+      elseif string.find(TxDevices[i]["name"],"-600-") then 
+        if TxDevices[i]['aliasname'] ~= "" then table.insert(Tx600,TxDevices[i]['aliasname']) else table.insert(Tx600,TxDevices[i]['name']) end
+      end
+    end
+    CreateMatrixChoices()
+  end
+  
+  function CreateMatrixChoices()
+    if DebugFunction then print("CreateMatrixChoices() Called") end
+    if #RxDevices>0 then
+      if RxCount==1 then
+        for i=1,#RxDevices do 
+          if RxDevices[i]["aliasname"]==Controls.RxName.String or RxDevices[i]["name"]==Controls.RxName.String  then 
+            local model="Tx"..string.gsub(string.match(RxDevices[i]["name"],"-(%d)"),"-","").."00"
+            Controls.Source.Choices=_G[model]
+            break
+          else
+            Controls.Source.Choices={}
+          end
+        end
+      else
+        for i=1,RxCount do
+          for ii=1,#RxDevices do
+            if RxDevices[ii]["aliasname"]==Controls.RxName[i].String or RxDevices[ii]["name"]==Controls.RxName[i].String then 
+              local model="Tx"..string.gsub(string.match(RxDevices[ii]["name"],"-(%d)"),"-","").."00"
+              Controls.Source[i].Choices=_G[model]
+              break
+            end
+          end
+        end
+      end
+    end
+  end
+  
+  function UpdateMatrixChoices(pos)
+    if RxCount==1 then
+      for i=1,#RxDevices do
+        if RxDevices[i]["aliasname"]==Controls.RxName.String or RxDevices[i]["name"]==Controls.RxName.String then 
+          local model="Tx"..string.gsub(string.match(RxDevices[i]["name"],"-(%d)"),"-","").."00"
+          Controls.Source.Choices=_G[model]
+          break
+        else
+          Controls.Source.Choices={}
+        end
+      end
+    else
+      for i=1,#RxDevices do
+        if RxDevices[i]["aliasname"]==Controls.RxName[pos].String or RxDevices[i]["name"]==Controls.RxName[pos].String then 
+          local model="Tx"..string.gsub(string.match(RxDevices[i]["name"],"-(%d)"),"-","").."00"
+          Controls.Source[pos].Choices=_G[model]
+          break
+        else
+          Controls.Source[pos].Choices={}
+        end
+      end
+    end
+  end
+  
+  function CreateTxChoices(txdata)
+    if DebugFunction then print("CreateTxChoices() Called") end
+    TxChoices={}
+    for i=1,#txdata do
+      if txdata[i]["aliasname"]~="" then 
+        table.insert(TxChoices,txdata[i]["aliasname"])
+      else
+        table.insert(TxChoices,txdata[i]["name"])
+      end
+    end
+    if TxCount==1 then 
+      Controls.TxName.Choices=TxChoices
+    else
+      for i=1,TxCount do
+        Controls.TxName[i].Choices=TxChoices
+      end
+    end
+  end
+  
+  function CreateRxChoices(rxdata)
+    if DebugFunction then print("CreateRxChoices() Called") end
+    RxChoices={}
+    for i=1,#rxdata do
+      if rxdata[i]["aliasname"]~="" then 
+        table.insert(RxChoices,rxdata[i]["aliasname"])
+      else
+        table.insert(RxChoices,rxdata[i]["name"])
+      end
+    end
+    if RxCount==1 then 
+      Controls.RxName.Choices=RxChoices
+      FilterTxModels()
+    else
+      for i=1,RxCount do
+        Controls.RxName[i].Choices=RxChoices
+      end
+      FilterTxModels()
+    end
+  end
+  
+  function RefreshDevices()
+    if DebugFunction then print("RefreshDevices() Called") end
+    jdata,JData="",""
+    TxDevices,TxChoices,RxDevices,RxChoices={},{},{},{}
+    Send("config get device info")
+  end
+  
+  function MatrixSync(matrix)
+    if DebugFunction then print("MatrixSync() Called") end
+    if RxCount==1 then
+      for data in string.gmatch(matrix,"[^\r\n]+") do
+        txname,rxname=string.match(data,"(.+) (.+)")
+        if Controls.RxName.String==rxname then 
+          Controls.Source.String=txname 
+          break 
+        else 
+          Controls.Source.String="" 
+        end
+      end
+    else
+      for i=1,RxCount do 
+        for data in string.gmatch(matrix,"[^\r\n]+") do
+          txname,rxname=string.match(data,"(.+) (.+)")  
+          if Controls.RxName[i].String==rxname then 
+            Controls.Source[i].String=txname 
+            break 
+          else 
+            Controls.Source[i].String= ""
+          end
+        end
+      end
+    end
+  end
+  
+  function OnlineSync()
+    if DebugFunction then print("OnlineSync() Called") end
+    for i=1,TxCount do
+      if TxCount==1 then 
+        local data=Controls.TxName.String
+        if data~="" then PopulateTxInfo(data) end
+      else
+        local data=Controls.TxName[i].String
+        if data~="" then PopulateTxInfo(data,i) end
+      end
+    end
+    for i=1,RxCount do
+      if RxCount==1 then 
+        local data=Controls.RxName.String
+        if data~="" then PopulateRxInfo(data) end
+      else
+        local data=Controls.RxName[i].String
+        if data~="" then PopulateRxInfo(data,i) end
+      end
+    end
+  end
+  
+  function PopulateTxInfo(data,pos)
+    if DebugFunction then print("PopulateTxInfo() Called") end
+    for i=1,#TxDevices do
+      if TxDevices[i]["aliasname"]==data or TxDevices[i]["name"]==data then
+        if TxCount==1 then
+          Controls.TxOnline.Boolean=true
+          if TxDevices[i]["hdcp14_enable"]==true or TxDevices[i]["hdcp22_enable"]==true or TxDevices[i]["hdcp"]==true then
+            Controls.TxHDCP.Boolean=true
+          else
+            Controls.TxHDCP.Boolean=false
+          end
+        else
+          Controls.TxOnline[pos].Boolean=true
+          if TxDevices[i]["hdcp14_enable"]==true or TxDevices[i]["hdcp22_enable"]==true or TxDevices[i]["hdcp"]==true then
+            Controls.TxHDCP[pos].Boolean=true
+          else
+            Controls.TxHDCP[pos].Boolean=false
+          end
+        end
+        break
+      else
+        if TxCount==1 then
+          Controls.TxOnline.Boolean=false
+          Controls.TxHDCP.Boolean=false
+        else
+          Controls.TxOnline[pos].Boolean=false
+          Controls.TxHDCP[pos].Boolean=false
+        end
+      end
+    end
+  end
+  
+  function PopulateRxInfo(data,pos)
+    if DebugFunction then print("PopulateRxInfo() Called") end
+    for i=1,#RxDevices do
+      if RxDevices[i]["aliasname"]==data or RxDevices[i]["name"]==data then
+        if RxCount==1 then
+          UpdateMatrixChoices()
+          Controls.RxOnline.Boolean=true
+          break
+        else
+          UpdateMatrixChoices(pos)
+          Controls.RxOnline[pos].Boolean=true
+          break
+        end
+      else
+        if RxCount==1 then
+          Controls.RxOnline.Boolean=false
+          Controls.Source.String=""
+          Controls.Source.Choices={}
+        else
+          Controls.RxOnline[pos].Boolean=false
+          Controls.Source[pos].String=""
+          Controls.Source[pos].Choices={}
+        end
+      end
+    end
+  end
+  
+  function ChangeTx(ctrl)
+    if DebugFunction then print("ChangeTx() Called") end
+    if RxCount==1 then
+      Send("matrix set "..Controls.Source.String.." "..Controls.RxName.String)
+    else
+      Send("matrix set "..Controls.Source[ctrl].String.." "..Controls.RxName[ctrl].String)
+    end
+  end
+  
+  function RebootDevice(name)
+    if DebugFunction then print("RebootDevice() Called") end
+    Send("config set device reboot "..name)
+  end
+  
+  -- Buffer Management
+  function VerifyJData(jdata)
+    if DebugFunct then print("VerifyJdata() Called") end 
+    local _,open = string.gsub(jdata, "{", "")
+    local _,close = string.gsub(jdata, "}", "")
+    return open==close,open,close
+  end
+  
+  function ParseJSON(jdata)
+    if DebugFunction then print("ParseJSON() Called") end
+    JData=rapidjson.decode(jdata)
+    if JData~=nil then
+      for i=1,#JData["devices"] do 
+        if string.find(JData["devices"][i]["name"],"-TX-") then
+          table.insert(TxDevices,JData["devices"][i])
+        elseif string.find(JData["devices"][i]["name"],"-RX-") then
+          table.insert(RxDevices,JData["devices"][i])
+        end
+      end 
+    end
+    OnlineSync()
+  end
+  
+  function ParseResponse()
+    if DebugFunction then print("ParseResponse() Called") end
+    rx=Wyrestorm:Read(Wyrestorm.BufferLength)
+    if DebugRx then print("Rx: "..rx) end
+    while rx do
+      if not TelnetActive then TelnetLogin(rx) end
+      if string.find(rx,"devices json info:") then FullPacket=false end
+      if FullPacket then
+        if string.find(rx,"matrix information:") then MatrixDump=true end
+        if MatrixDump then MatrixSync(rx) end
+        if string.find(rx,"[^\r\n\r\n]+") and MatrixDump then MatrixDump=false end
+        for data in string.gmatch(rx,"[^\r\n]+") do
+          if string.find(data,"(.+):(.+)") then 
+            SetDevInfo(data)
+          elseif string.find(data,"notify endpoint %+") then
+            name=string.gsub(data,"notify endpoint %+ ","")
+            print("Found Endpoint: "..name)
+            RefreshDevices()
+          elseif string.find(data,"notify endpoint %-") then
+            name=string.gsub(data,"notify endpoint %- ","") or ""
+            print("Lost Endpoint: "..name)
+            RefreshDevices()
+          end
+        end
+      else
+        rx=string.gsub(rx,"devices json info:","")
+        jdata=jdata..rx
+        VerifyJData(jdata)
+        if VerifyJData(jdata) then
+          FullPacket=true 
+          ParseJSON(jdata)
+          Send("matrix get")
+        end
+        CreateTxChoices(TxDevices)
+        CreateRxChoices(RxDevices)
+      end
+      rx=Wyrestorm:Read(Wyrestorm.BufferLength)
+    end
+  end
+  
+  -- Socket Management
+  Wyrestorm.Connected=function()
+    print("Socket connected")
+  end
+  
+  Wyrestorm.Data=ParseResponse
+  
+  Wyrestorm.Reconnect=function()
+    print("Socket reconnecting...")
+    Disconnected()
+  end
+  
+  Wyrestorm.Closed=function()
+    print("Socket closed")
+    Disconnected("MISSING","Socket closed")
+  end
+  
+  Wyrestorm.Error=function()
+    print("Socket error")
+    Disconnected("MISSING","Socket error")
+  end
+  
+  Wyrestorm.Timeout=function()
+    print("Socket timeout")
+    Disconnected("MISSING","Timeout")
+  end
+  
+  function Initialization()
+    if DebugFunction then print("Initialization() Called") end
+    SetupDebugPrint()
+    Connect()
+  end
+  
+  
+  -- EventHandlers
+  PollTimer.EventHandler=PollDevice
+  IPAddress.EventHandler=Connect
+  Port.EventHandler=Connect
+  Password.EventHandler=Connect
+  RefreshDevs.EventHandler=RefreshDevices
+  
+  if TxCount==1 then
+    Controls.TxName.EventHandler=function() PopulateTxInfo(Controls.TxName.String) end
+    Controls.TxReboot.EventHandler=function() RebootDevice(Controls.TxName.String) end
+  else
+    for i=1,TxCount do
+      Controls.TxName[i].EventHandler=function() PopulateTxInfo(Controls.TxName[i].String,i) end
+      Controls.TxReboot[i].EventHandler=function() RebootDevice(Controls.TxName[i].String) end
+    end
+  end
+  
+  if RxCount==1 then
+    Controls.RxName.EventHandler=function() PopulateRxInfo(Controls.RxName.String) Send("matrix get") end
+    Controls.Source.EventHandler=function() ChangeTx(1) Send("matrix get") end
+    Controls.RxReboot.EventHandler=function() RebootDevice(Controls.RxName.String) end
+  else
+    for i=1,RxCount do
+      Controls.RxName[i].EventHandler=function() PopulateRxInfo(Controls.RxName[i].String,i) Send("matrix get") end
+      Controls.Source[i].EventHandler=function() ChangeTx(i) Send("matrix get") end
+      Controls.RxReboot[i].EventHandler=function() RebootDevice(Controls.RxName[i].String) end
+    end
+  end
+  
+  
+  -- Start at runtime
+  Initialization()
+end
