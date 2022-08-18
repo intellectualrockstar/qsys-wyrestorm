@@ -1,20 +1,15 @@
---[[ BEGIN DIGITAL SIGNATURE
-Pi6RULQQINwP3btuEAfWERdy0CceARNuEDy2LcfR5n5opHA55s33NKnB+Wju2apYZEdm0uKzxtthzLpti1UjLc0ff5Vq18YviIO9PyHnSy0EVdqYkxtkL2q3gIl42ZExCnPMklQNds7oytY4SzhOb5MAJ4ALbZVS+MkyuzcCkjAulcq2txXXDPSjqcYW9JA+6UsX9jFwbroL6n9bge/zVRvZo7fmoQQlFYxQtuWLl0vB4bHB5K5pnByozaw3HiHorZAeMY3lfRgcXWxzet4V4yvKszBI1IuYjuKZEFCFWMTimkbAUEr0j7yXattdRqtS9uGsm1crBwEyui5ga08YGw==
-END DIGITAL SIGNATURE ]]
 -- Wyrestorm
 -- by QSC
--- July 2020
+-- Modified by Intellectual Rockstar
 
 PluginInfo = {
-    Name = "Enterprise Manager~Wyrestorm~Wyrestorm v2.2",
+    Name = "IntellectualRockstar~Wyrestorm with IR",
     Version = "2.2",
     BuildVersion = "2.2.0.0",
-    Id = "6f53c819-55dd-4b99-9a4e-e03b64988c8a",
-    Author = "QSC",
+    Id = "ir.wyrestorm.with.ir.0.0.0-master", -- show this is just a unique id.
+    Author = "Intellectual Rockstar",
     Description = "Control plugin for Wyrestorm",
-    IsManaged = true,
     Model = "NHD Series",
-    Type = Reflect and Reflect.Types.VideoDistribution or 0
 }
 
 function GetColor(props)
@@ -73,6 +68,7 @@ function GetControls(props)
     {Name="SysVersion",ControlType="Text",Count=1,UserPin=true,PinStyle="Output"},
     {Name="RefreshDevs",ControlType="Button",ButtonType="Trigger",Count=1,UserPin=true,PinStyle="Both"},
     {Name="TxName",ControlType="Text",TextBoxType="ComboBox",Count=TxCount,UserPin=true,PinStyle="Output"},
+    {Name="TxIR",ControlType="Text",Count=TxCount,UserPin=true,PinStyle="Input"},
     {Name="TxReboot",ControlType="Button",ButtonType="Trigger",Count=TxCount,UserPin=true,PinStyle="Both"},
     {Name="TxHDCP",ControlType="Indicator",IndicatorType="LED",PinStyle="Output",UserPin=true,Count=TxCount},
     {Name="TxOnline",ControlType="Indicator",IndicatorType="LED",PinStyle="Output",UserPin=true,Count=TxCount},
@@ -856,6 +852,14 @@ if Controls then
     Send("config set device reboot "..name)
   end
   
+  function SendIR(name,pos)
+    if TxCount==1 then
+      Send("infrared "..Controls.TxIR.String.. " "..name)
+    else
+      Send("infrared "..Controls.TxIR[pos].String.. " "..name)
+    end
+  end
+
   -- Buffer Management
   function VerifyJData(jdata)
     if DebugFunct then print("VerifyJdata() Called") end 
@@ -963,10 +967,12 @@ if Controls then
   if TxCount==1 then
     Controls.TxName.EventHandler=function() PopulateTxInfo(Controls.TxName.String) end
     Controls.TxReboot.EventHandler=function() RebootDevice(Controls.TxName.String) end
+    Controls.TxIR.EventHandler=function() SendIR(Controls.TxName.String) end
   else
     for i=1,TxCount do
       Controls.TxName[i].EventHandler=function() PopulateTxInfo(Controls.TxName[i].String,i) end
       Controls.TxReboot[i].EventHandler=function() RebootDevice(Controls.TxName[i].String) end
+      Controls.TxIR[i].EventHandler=function() SendIR(Controls.TxName[i].String, Controls.TxIR[i].String) end
     end
   end
   
