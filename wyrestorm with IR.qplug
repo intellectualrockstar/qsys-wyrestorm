@@ -4,7 +4,7 @@
 
 PluginInfo = {
     Name = "IntellectualRockstar~Wyrestorm with IR",
-    Version = "2.2",
+    Version = "1",
     BuildVersion = "2.2.0.0",
     Id = "ir.wyrestorm.with.ir.0.0.0-master", -- show this is just a unique id.
     Author = "Intellectual Rockstar",
@@ -168,6 +168,7 @@ function GetControlLayout(props)
       if TxCount<33 then
         for i=1,TxCount do
           layout["TxName "..i]={PrettyName="Tx~Tx Names~Tx Name "..i,Style="ComboBox",Position={42,98+(19*i)},Size={93,16}}
+          layout["TxIR "..i]={PrettyName="Tx~Tx IR~Tx IR "..i,Style="ComboBox",Position={42,98+(19*i)},Size={93,16}}
           layout["TxReboot "..i]={PrettyName="Tx~Tx Reboot~Tx Reboot "..i,Style="Button",Position={141,98+(19*i)},Size={36,16}}
           layout["TxHDCP "..i]={PrettyName="Tx~Tx HDCP~Tx HDCP "..i,Style="LED",Position={195,98+(19*i)},Size={16,16}}
           layout["TxOnline "..i]={PrettyName="Tx~Tx Online~Tx Online "..i,Style="LED",Position={234,98+(19*i)},Size={16,16}}
@@ -176,6 +177,7 @@ function GetControlLayout(props)
       else
         for i=1,32 do
           layout["TxName "..i]={PrettyName="Tx~Tx Names~Tx Name "..i,Style="ComboBox",Position={42,98+(19*i)},Size={93,16}}
+          layout["TxIR "..i]={PrettyName="Tx~Tx IR~Tx IR "..i,Style="ComboBox",Position={42,98+(19*i)},Size={93,16}}
           layout["TxReboot "..i]={PrettyName="Tx~Tx Reboot~Tx Reboot "..i,Style="Button",Position={141,98+(19*i)},Size={36,16}}
           layout["TxHDCP "..i]={PrettyName="Tx~Tx HDCP~Tx HDCP "..i,Style="LED",Position={195,98+(19*i)},Size={16,16}}
           layout["TxOnline "..i]={PrettyName="Tx~Tx Online~Tx Online "..i,Style="LED",Position={234,98+(19*i)},Size={16,16}}
@@ -184,6 +186,7 @@ function GetControlLayout(props)
       end
     else
       layout["TxName"]={PrettyName="Tx~Tx Name",Style="ComboBox",Size={93,16},Position={42,117}}
+      layout["TxIR"]={PrettyName="Tx~Tx IR",Style="ComboBox",Size={93,16},Position={42,117}}
       layout["TxReboot"]={PrettyName="Tx~Tx Reboot",Style="Button",Position={141,117},Size={36,16}}
       layout["TxHDCP"]={PrettyName="Tx~Tx HDCP",Style="LED",Position={195,117},Size={16,16}}
       layout["TxOnline"]={PrettyName="Tx~Tx Online",Style="LED",Position={234,117},Size={16,16}}
@@ -853,11 +856,17 @@ if Controls then
   end
   
   function SendIR(name,pos)
+    if DebugFunction then print("SendIR() Called") end
     if TxCount==1 then
-      Send("infrared "..Controls.TxIR.String.. " "..name)
-    else
-      Send("infrared "..Controls.TxIR[pos].String.. " "..name)
+      if string.len(Controls.TxIR.String) > 10 then
+        Send("infrared \""..Controls.TxIR.String.. "\" "..name)
+      end
+    else 
+     if string.len(Controls.TxIR[pos].String) > 10 then
+        Send("infrared \""..Controls.TxIR[pos].String.. "\" "..name)
+     end
     end
+    
   end
 
   -- Buffer Management
@@ -972,7 +981,7 @@ if Controls then
     for i=1,TxCount do
       Controls.TxName[i].EventHandler=function() PopulateTxInfo(Controls.TxName[i].String,i) end
       Controls.TxReboot[i].EventHandler=function() RebootDevice(Controls.TxName[i].String) end
-      Controls.TxIR[i].EventHandler=function() SendIR(Controls.TxName[i].String, Controls.TxIR[i].String) end
+      Controls.TxIR[i].EventHandler=function() SendIR(Controls.TxName[i].String,i) end
     end
   end
   
